@@ -162,3 +162,20 @@
     font-family: Arial, Helvetica, sans-serif;
   }
 }
+
+/* St John Lynch brand palette (navy, gold, off-white) - change colours here */
+@theme {
+  --color-brand-50: #f7f5f0;
+  --color-brand-100: #e8ecf4;
+  --color-brand-200: #d8d4cc;
+  --color-brand-300: #b9c3d8;
+  --color-brand-400: #8f9bb8;
+  --color-brand-600: #4f5f85;
+  --color-brand-700: #3a3a5c;
+  --color-brand-800: #2d2d4a;
+  --color-brand-900: #1a1a2e;
+  --color-gold-100: #f3ecdf;
+  --color-gold-300: #c9a97a;
+  --color-gold-500: #b08c5a;
+  --color-gold-700: #8a6a3c;
+}

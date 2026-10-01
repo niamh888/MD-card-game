@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'RAPS Card Game | Medical Device Learning',
+  title: 'Medical Device Card Game | Medical Device Learning',
   description: 'Practice medical device terminology with active recall flashcards.',
   generator: 'v0.app',
   icons: {
