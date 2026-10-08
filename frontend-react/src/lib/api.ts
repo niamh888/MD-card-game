@@ -35,3 +35,10 @@ export const getRatings = () => request<Record<string, number>>('/api/ratings')
 // Save one rating: 1 = needs review, 2 = getting there, 3 = I knew it.
 export const saveRating = (term: string, rating: number) =>
   request<{ saved: boolean }>('/api/ratings', { method: 'PUT', body: JSON.stringify({ term, rating }) })
+
+// Check the backend is running. Resolves to { status: 'ok' } when Flask is up.
+export const health = () => request<{ status: string }>('/api/health')
+
+// The same calls gathered in one object, so a page can write api.health() or api.getDashboard().
+// (The separate exports above still work, so existing pages need no changes.)
+export const api = { health, getDashboard, getMe, requestLink, verifyToken, logout, getRatings, saveRating }
