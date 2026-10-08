@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     // Lets us write '@/lib/api' instead of '../../lib/api' ('@' means the src folder).
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: { '@': path.resolve(import.meta.dirname, 'src') },
   },
   server: {
     // Any request the React app makes to /api/... is passed on to the Flask backend.

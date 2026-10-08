@@ -23,7 +23,14 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:5173. The frontend sends `/api/...` requests to Flask on port 5000.
+Open http://localhost:5173. The frontend sends `/api/...` requests to Flask on port 5001.
+To check the backend is running, open http://localhost:5001/api/health. It should show `{"status": "ok"}`.
+
+## Run the tests
+
+Backend, in `backend-flask` (with the virtual environment active): `pytest`
+
+Frontend, in `frontend-react`: `pnpm test`
 
 ## Signing in during development
 
