@@ -1,0 +1,8 @@
+# Python virtual environment (recreate with: python -m venv venv)
+venv/
+__pycache__/
+*.pyc
+
+# Local database and secrets
+data.db
+.env

@@ -1,13 +1,15 @@
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ArrowRight, Building2, Calendar, Cpu, ExternalLink, FileCheck2, Globe, Sparkles } from 'lucide-react'
-import { getDashboardData, type Count } from '@/lib/fda'
-import { Donut, TrendChart } from '@/components/dashboard/charts'
-import { WorldMap } from '@/components/dashboard/world-map'
+import { getDashboard } from '@/lib/api'
+import type { Count, DashboardData } from '@/lib/types'
+import { Donut, TrendChart } from '@/components/charts'
+import { WorldMap } from '@/components/world-map'
 
-export const revalidate = 86400
-
+// Formats numbers with commas, e.g. 156705 -> 156,705.
 const fmt = new Intl.NumberFormat('en-US')
 
+// One of the four headline number boxes at the top.
 function StatCard({ icon: Icon, label, value, note }: { icon: typeof Cpu; label: string; value: string; note: string }) {
   return (
     <div className="rounded-[20px] border border-brand-200 bg-white p-5 shadow-[0_8px_24px_rgba(26,26,46,0.04)]">
@@ -21,6 +23,7 @@ function StatCard({ icon: Icon, label, value, note }: { icon: typeof Cpu; label:
   )
 }
 
+// A ranked list with a bar under each row. The longest bar is the biggest count.
 function BarList({ title, items }: { title: string; items: Count[] }) {
   const max = Math.max(...items.map((i) => i.count))
   return (
@@ -43,6 +46,7 @@ function BarList({ title, items }: { title: string; items: Count[] }) {
   )
 }
 
+// A box that links out to another market's public register (EU or UK). <a> is used because it leaves our site.
 function MarketLink({ title, text, href, button }: { title: string; text: string; href: string; button: string }) {
   return (
     <section className="flex flex-col justify-between gap-4 rounded-[20px] border border-brand-200 bg-brand-100 p-5">
@@ -57,17 +61,28 @@ function MarketLink({ title, text, href, button }: { title: string; text: string
   )
 }
 
-export default async function Page() {
-  let data
-  try {
-    data = await getDashboardData()
-  } catch {
+// The home page. It asks the Flask backend for the numbers, then draws the charts.
+export default function Dashboard() {
+  // The numbers come from the Flask backend once the page has loaded.
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  // useEffect with [] runs once, when the page first appears: that is the moment to fetch the data.
+  useEffect(() => {
+    getDashboard().then(setData).catch(() => setFailed(true))
+  }, [])
+
+  // While the data loads, or if loading fails, show a message instead of the dashboard.
+  if (failed) {
     return (
       <main className="min-h-screen bg-brand-100 p-10 text-brand-900">
         <h1 className="text-2xl font-semibold">Dashboard unavailable</h1>
         <p className="mt-2 text-sm text-brand-600">Could not load FDA data right now. Please refresh in a moment.</p>
       </main>
     )
+  }
+  if (!data) {
+    return <main className="min-h-screen bg-brand-100 p-10 text-sm text-brand-600">Loading the latest FDA data...</main>
   }
 
   return (
@@ -78,7 +93,7 @@ export default async function Page() {
             <div className="flex size-10 items-center justify-center rounded-xl bg-brand-900 text-gold-300 shadow-sm"><Sparkles size={19} strokeWidth={2.5} /></div>
             <div className="text-[17px] font-bold tracking-[-0.03em] text-brand-900">Medical device dashboard</div>
           </div>
-          <Link href="/study" className="rounded-full border border-brand-300 bg-white px-4 py-2 text-sm font-medium text-brand-700 shadow-sm">Learn: Study deck</Link>
+          <Link to="/study" className="rounded-full border border-brand-300 bg-white px-4 py-2 text-sm font-medium text-brand-700 shadow-sm">Learn: Study deck</Link>
         </div>
       </header>
 
@@ -127,7 +142,7 @@ export default async function Page() {
               Try our Study Deck: free flashcards on medical device terms, from regulatory affairs and quality to AI-enabled devices. Pick a topic or your role and test yourself.
             </p>
           </div>
-          <Link href="/study" className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-gold-500 px-5 py-2.5 text-sm font-bold text-brand-900 shadow-sm hover:bg-gold-300">
+          <Link to="/study" className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-gold-500 px-5 py-2.5 text-sm font-bold text-brand-900 shadow-sm hover:bg-gold-300">
             Start learning <ArrowRight size={16} />
           </Link>
         </section>

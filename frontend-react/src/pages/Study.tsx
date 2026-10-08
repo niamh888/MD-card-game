@@ -1,7 +1,6 @@
-'use client'
-
-import { useMemo, useState, type ReactNode } from 'react'
-import { saveRating } from '@/app/study/actions'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { getMe, getRatings, logout, saveRating } from '@/lib/api'
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,6 +12,7 @@ import {
   Trophy,
 } from 'lucide-react'
 
+// The flashcards. Each has a term to define, a topic (category), the answer (definition) and a hint.
 const cards = [
   {
     term: 'Aseptic technique',
@@ -53,9 +53,11 @@ const cards = [
   },
 ]
 
+// The topic and role buttons shown above the card. 'All ...' means no filter.
 const studyAreas = ['All areas', 'Biocompatibility', 'Sterilisation', 'SaMD', 'SiMD', 'AI-enabled medical devices', 'Electrical Safety', 'Risk Management', 'QMS']
 const roles = ['All roles', 'Regulatory Affairs', 'Quality Assurance', 'Supplier Quality', 'Manufacturing / Process', 'R&D Engineering', 'Document Control', 'Clinical Affairs']
 
+// Extra cards aimed at one job role each. 'role' is what the role buttons filter on.
 const roleCards = [
   { term: 'Substantial change', role: 'Regulatory Affairs', category: 'Regulatory Affairs', definition: 'A change that may significantly affect the safety or effectiveness of a device and may require regulatory authority notification or approval.', hint: 'Consider the change impact, intended use, and applicable market pathway.' },
   { term: 'CAPA effectiveness', role: 'Quality Assurance', category: 'Quality Assurance', definition: 'Objective evidence that corrective and preventive actions addressed the root cause and prevented recurrence.', hint: 'It is more than simply completing the action.' },
@@ -66,6 +68,8 @@ const roleCards = [
   { term: 'Clinical evaluation', role: 'Clinical Affairs', category: 'Clinical Affairs', definition: 'The systematic process of assessing clinical data to demonstrate that a device achieves its intended clinical benefit and meets safety requirements.', hint: 'It connects clinical evidence with intended purpose.' },
 ]
 
+// A circular progress meter. value is 0-100.
+// It draws a grey circle with a navy circle on top, and hides part of the navy one with strokeDashoffset.
 function ProgressRing({ value }: { value: number }) {
   const radius = 27
   const circumference = 2 * Math.PI * radius
@@ -90,21 +94,57 @@ function ProgressRing({ value }: { value: number }) {
   )
 }
 
+// Every card in one list, so we can count how many have been rated.
 const allCards = [...cards, ...roleCards]
 const totalCards = allCards.length
 
-export default function StudyClient({ account, signedIn, initialRatings }: { account: ReactNode; signedIn: boolean; initialRatings: Record<string, number> }) {
-  const [current, setCurrent] = useState(0)
+// The study deck page. In React, a component is a function that returns what to draw.
+// useState remembers a value between redraws; when you change it, React redraws the page.
+export default function Study() {
+  // Who is signed in (null = nobody), and their saved ratings, e.g. { Hemostasis: 3 }.
+  const [user, setUser] = useState<{ email: string } | null>(null)
+  const [ratings, setRatings] = useState<Record<string, number>>({})
+  const signedIn = user !== null
+
+  // When the page opens, ask Flask who is signed in and load their saved ratings.
+  useEffect(() => {
+    getMe()
+      .then((me) => {
+        setUser(me)
+        if (me) return getRatings().then(setRatings)
+      })
+      .catch(() => {}) // if the backend is unreachable, carry on as signed out
+  }, [])
+
+  async function signOut() {
+    await logout()
+    setUser(null)
+    setRatings({})
+  }
+
+  // The sign-in / sign-out control shown in the page header.
+  const account = user ? (
+    <div className="flex items-center gap-2 rounded-full border border-brand-200 bg-white px-3 py-2 text-brand-700 shadow-sm">
+      <span className="max-w-[160px] truncate">{user.email}</span>
+      <button type="button" onClick={signOut} className="font-bold text-gold-700 hover:underline">Sign out</button>
+    </div>
+  ) : (
+    <Link to="/signin" className="rounded-full bg-brand-900 px-4 py-2 text-white shadow-sm">Sign in</Link>
+  )
+
+  // What the person is doing right now (none of this is saved, it only lives while the page is open).
+  const [current, setCurrent] = useState(0) // position in the current list of cards
   const [selectedArea, setSelectedArea] = useState('All areas')
   const [selectedRole, setSelectedRole] = useState('All roles')
-  const [revealed, setRevealed] = useState(false)
+  const [revealed, setRevealed] = useState(false) // has the definition been shown?
   const [answer, setAnswer] = useState('')
-  const [rating, setRating] = useState<number | null>(null)
-  const [ratings, setRatings] = useState<Record<string, number>>(initialRatings)
+  const [rating, setRating] = useState<number | null>(null) // rating chosen for the card on screen
+  // The cards that match the chosen role and topic. useMemo only recalculates when those choices change.
   const filteredCards = useMemo(() => {
     const roleDeck = selectedRole === 'All roles' ? cards : roleCards.filter((item) => item.role === selectedRole)
     return selectedArea === 'All areas' ? roleDeck : roleDeck.filter((item) => item.category === selectedArea)
   }, [selectedArea, selectedRole])
+  // If nothing matches the filters, show a 'coming soon' card instead of an empty page.
   const studyCards = filteredCards.length > 0 ? filteredCards : [{
     term: 'New cards coming soon',
     category: selectedArea,
@@ -112,12 +152,14 @@ export default function StudyClient({ account, signedIn, initialRatings }: { acc
     hint: 'This topic will be added to the deck soon.',
   }]
   const card = studyCards[current] ?? studyCards[0]
+  // Progress numbers. They are worked out from the saved ratings, so they stay correct after signing in again.
   const ratedCount = allCards.filter((item) => ratings[item.term]).length
   const knewCount = allCards.filter((item) => ratings[item.term] === 3).length
   const needsReview = allCards.filter((item) => ratings[item.term] === 1).length
   const progress = Math.round((ratedCount / totalCards) * 100)
   const accuracy = ratedCount === 0 ? 0 : Math.round((knewCount / ratedCount) * 100)
 
+  // Go back to the first card with a blank answer. Used when the filters change.
   function resetCard() {
     setCurrent(0)
     setRevealed(false)
@@ -142,11 +184,13 @@ export default function StudyClient({ account, signedIn, initialRatings }: { acc
     setRating(null)
   }
 
+  // Called when the person rates a card: 1 = needs review, 2 = getting there, 3 = I knew it.
   function rate(value: number) {
     setRating(value)
     if (!allCards.some((item) => item.term === card.term)) return
+    // Copy the old ratings and add or replace this card's rating (React needs a new object, not an edited one).
     setRatings((previous) => ({ ...previous, [card.term]: value }))
-    if (signedIn) void saveRating(card.term, value)
+    if (signedIn) void saveRating(card.term, value).catch(() => {}) // save to the backend
   }
 
   return (
@@ -163,7 +207,7 @@ export default function StudyClient({ account, signedIn, initialRatings }: { acc
             </div>
           </div>
           <div className="hidden items-center gap-8 text-sm font-medium text-brand-600 md:flex">
-            <a href="/">Dashboard</a><a className="text-brand-800" href="#study">Study deck</a>
+            <Link to="/">Dashboard</Link><a className="text-brand-800" href="#study">Study deck</a>
             <a href="#progress">My progress</a>
             {account}
           </div>
@@ -221,7 +265,7 @@ export default function StudyClient({ account, signedIn, initialRatings }: { acc
         {!signedIn && (
           <div className="mb-6 flex flex-col gap-3 rounded-[20px] border border-gold-300 bg-gold-100 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-brand-800">Your ratings are not being saved. Sign in with your email to keep your progress.</p>
-            <a href="/signin" className="w-fit rounded-full bg-brand-900 px-4 py-2 text-xs font-bold text-white">Sign in</a>
+            <Link to="/signin" className="w-fit rounded-full bg-brand-900 px-4 py-2 text-xs font-bold text-white">Sign in</Link>
           </div>
         )}
 

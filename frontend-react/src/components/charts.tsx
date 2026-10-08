@@ -1,8 +1,11 @@
-import type { Count } from '@/lib/fda'
+import type { Count } from '@/lib/types'
 
 const fmt = new Intl.NumberFormat('en-US')
+// Colours for the donut slices, taken from the brand palette in index.css.
 const COLORS = ['var(--color-brand-900)', 'var(--color-brand-600)', 'var(--color-gold-500)', 'var(--color-brand-400)', 'var(--color-gold-300)', 'var(--color-brand-700)', 'var(--color-brand-200)']
 
+// Bar chart of decisions per year, with a gold line for the running total.
+// It is drawn with SVG: x() works out where each year sits, and each bar's height is its share of the biggest bar.
 export function TrendChart({ data }: { data: Count[] }) {
   const w = 640, h = 240, pad = { l: 40, r: 40, t: 12, b: 28 }
   const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b
@@ -35,6 +38,7 @@ export function TrendChart({ data }: { data: Count[] }) {
   )
 }
 
+// A donut chart. Each slice is a circle outline, cut to length with strokeDasharray (the dash length is the slice's share).
 export function Donut({ items }: { items: Count[] }) {
   const total = items.reduce((s, i) => s + i.count, 0)
   const r = 54, c = 2 * Math.PI * r
