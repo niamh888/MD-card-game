@@ -255,6 +255,194 @@ async function request<T>(url: string): Promise<T>
 
 `T` is a placeholder for "whatever shape this call returns", and `Promise<T>` means "an answer that arrives later, shaped like T". So `request<DashboardData>('/api/dashboard')` says "ask for the dashboard; the answer will look like `DashboardData`". Then `as T` means "trust me, the data is this shape". TypeScript cannot check that one, so the backend's key names must match `types.ts`.
 
+## Fetching an API (today's topic)
+
+**API** here means "the list of web addresses the backend answers". Think of a restaurant menu: the menu lists what you can order (`/api/health`, `/api/dashboard`, `/api/ratings`...), and the kitchen (the backend) sends back what you asked for.
+
+**Fetching** means the frontend (the browser) placing an order. JavaScript has a built-in function for it, called `fetch`.
+
+The simplest possible fetch:
+
+```ts
+const response = await fetch('/api/health')   // 1. place the order, wait for the reply
+const data = await response.json()            // 2. turn the reply text into an object (parsing)
+console.log(data.status)                      // 3. use it: prints "ok"
+```
+
+### Why `await` and `async`?
+
+The reply isn't instant: the request travels to the backend, which does some work and answers. `await` means "wait here until the answer arrives". A function that uses `await` must be marked `async`. While it waits, the rest of the page keeps working instead of freezing.
+
+### Methods: what kind of order is it?
+
+Every request has a **method** that says what you want to do:
+
+| Method | Meaning | Example in our app |
+| --- | --- | --- |
+| `GET` | "Give me something" (the default for `fetch`) | `/api/dashboard`, `/api/health` |
+| `POST` | "Here is something new, do something with it" | asking for a sign-in link |
+| `PUT` | "Save or replace this" | saving a card rating |
+
+To send data you add options to `fetch`:
+
+```ts
+await fetch('/api/ratings', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },   // "the data I'm sending is JSON"
+  body: JSON.stringify({ term: 'Hemostasis', rating: 3 }),  // the data, turned into text
+})
+```
+
+`JSON.stringify` is the opposite of parsing: it turns an object into text so it can travel.
+
+### Did it work? Status codes
+
+Every reply comes with a number saying how it went. You'll see these in the backend terminal:
+
+| Code | Meaning | When it happens in our app |
+| --- | --- | --- |
+| `200` | OK, here you go | Normal success |
+| `400` | Bad request: you sent something wrong | An invalid email or rating |
+| `401` | Not signed in | Asking for ratings without signing in |
+| `404` | Not found: no such address | A typo in the URL |
+| `405` | Method not allowed | Using `GET` on an address that only accepts `POST` |
+| `502` | A service the backend depends on failed | The FDA website is down |
+
+`response.ok` is `true` for any 2xx code (200 and friends), so a quick check is `if (!response.ok) { ...something went wrong... }`.
+
+### Putting it together: how our app does it
+
+All our requests go through one helper, `request`, in `frontend-react/src/lib/api.ts`:
+
+```ts
+async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error ?? 'Something went wrong.')
+  return body as T
+}
+```
+
+Step by step:
+
+1. Place the order with `fetch`, always saying we're sending and expecting JSON.
+2. Parse the reply into an object (with a safety net so a broken reply doesn't crash us).
+3. If the status wasn't a success, stop and raise an error carrying the backend's message.
+4. Otherwise hand the data back.
+
+Then each call is a one-liner built on it:
+
+```ts
+export const health = () => request<{ status: string }>('/api/health')
+export const getDashboard = () => request<DashboardData>('/api/dashboard')
+```
+
+And a page uses it with `useEffect` and `useState`, as in the dashboard: fetch when the page appears, store the answer with `setData`, and the page redraws with the data. If the fetch fails, `.catch(...)` sets an error flag so the page can show a message instead of staying on "Loading...".
+
+### The usual shape of fetching in React
+
+1. **State** for the data (starts empty), and often for "loading" and "failed".
+2. **An effect** that runs once, calls the API, and stores the answer in state.
+3. **The page** shows "Loading..." while there's no data, an error message if it failed, and the real content once the data arrives.
+
+## Class example: the EventQuest code (`App.jsx`)
+
+In class your lecturer is building an events app called "EventQuest", where you can join events. These are the pieces from his `App.jsx`. They use ideas you already know, in new combinations.
+
+### An effect that depends on state
+
+```js
+useEffect(() => {
+  const count = joinedIds.length
+  document.title = count > 0 ? `EventQuest • Joined: ${count}` : 'EventQuest'
+}, [joinedIds])
+```
+
+- `joinedIds` is a list (an array) of the ids of the events you've joined. `.length` is how many are in it.
+- `document.title` is the text on the browser tab. Setting it changes the tab.
+- The list at the end is `[joinedIds]`, so this effect runs **every time `joinedIds` changes**. Join an event and the tab updates straight away.
+- Compare `[]` (run once) with `[joinedIds]` (run whenever it changes). That list is the only difference.
+
+### The ternary: a one-line if / else
+
+```js
+condition ? valueIfTrue : valueIfFalse
+```
+
+Read `?` as "if yes, then" and `:` as "otherwise". So `count > 0 ? 'Joined' : 'None'` means: if count is more than 0, use `'Joined'`, otherwise use `'None'`. You'll see it everywhere in React. In our app: `data.activeListings === null ? 'n/a' : fmt.format(data.activeListings)`.
+
+### Backticks and `${}`: putting values into text
+
+```js
+`EventQuest • Joined: ${count}`
+```
+
+Text in backticks can contain `${something}`, which is replaced by that value. With `count` = 2 the text becomes `EventQuest • Joined: 2`.
+
+### Adding to and removing from a list (`toggleJoin`)
+
+```js
+function toggleJoin(id) {
+  setJoinedIds(prev =>
+    prev.includes(id)
+      ? prev.filter(x => x !== id)   // already joined, so make a list without this id
+      : [...prev, id]                // not joined, so make a list with this id added
+  )
+}
+```
+
+"Toggle" means flip: join if you haven't, leave if you have.
+
+- `prev` is the list as it is right now. When the new value depends on the old one, pass a function like this to `setJoinedIds`.
+- `prev.includes(id)` asks "is this id already in the list?" and answers true or false.
+- `prev.filter(x => x !== id)` makes a **new** list keeping everything *except* this id. (`!==` means "is not the same as".)
+- `[...prev, id]` makes a **new** list: the three dots mean "copy everything from `prev`", then `id` is added on the end.
+- React needs a **new** list rather than a changed old one. Otherwise it can't tell that anything changed and won't redraw.
+
+Our app uses the same idea to save a rating in `Study.tsx`:
+
+```ts
+setRatings((previous) => ({ ...previous, [card.term]: value }))
+```
+
+It copies the old ratings, then adds or replaces this card's rating.
+
+### Making a unique id (`handleCreate`)
+
+Each new event needs an id nobody else has. His code builds one from the title:
+
+```js
+const idBase = slugify(values.title || 'new-event')   // "Beach Cleanup" -> "beach-cleanup"
+let id = idBase || `event-${Date.now()}`              // if that's empty, use the time as an id
+let suffix = 1
+while (events.some(e => e.id === id)) {               // is that id already taken?
+  id = `${idBase}-${suffix++}`                        // try beach-cleanup-1, then -2, ...
+}
+```
+
+- `values.title || 'new-event'` means "the title, or `'new-event'` if there is no title". (`||` reads as "or".)
+- `events.some(e => e.id === id)` asks "does any event already have this id?"
+- A `while` loop repeats its block for as long as the condition is true. Here it keeps adding `-1`, `-2` and so on until the id is free.
+- `suffix++` means "use the number, then add 1 to it".
+
+So two events called "Beach Cleanup" end up as `beach-cleanup` and `beach-cleanup-1`.
+
+### Arrow functions
+
+`x => x !== id` is a tiny function written briefly: "given `x`, answer whether `x` is not `id`". It's the same as `function (x) { return x !== id }`. You pass these to `filter`, `some` and `includes`.
+
+## Class example: sending data (`saveRsvp`)
+
+```js
+saveRsvp: (userId, eventId, status) =>
+  request("/api/rsvps", { method: "POST", body: JSON.stringify({ userId, eventId, status }) })
+```
+
+- It's one more entry in the `api` object: a small function that sends a "yes, I'm going" to the backend.
+- `method: "POST"` means "I'm sending something", unlike the plain "give me" requests.
+- `body` is the data being sent. `JSON.stringify` turns it into text so it can travel.
+- Ours is the same idea: `saveRating` sends a card's rating with `PUT`.
+
 ## Parsing
 
 The backend's answer arrives as plain text, e.g. `{"status": "ok"}`. **Parsing** turns that text into a real object, so `data.status` gives `"ok"`. In `api.ts`:
