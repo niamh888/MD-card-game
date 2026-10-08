@@ -17,6 +17,93 @@ Browser  <-->  Frontend (React, port 5173)  <-->  Backend (Flask, port 5001)  <-
 
 Both must be running at once, each in its own terminal.
 
+## Starting and stopping the app
+
+You need **two terminals open at the same time**: one for the backend and one for the frontend. Each one runs a program that keeps going until you stop it, so a terminal is "busy" while its server runs. That's why you need a second terminal rather than typing more commands into the first.
+
+In VS Code, open the terminal with Ctrl+` (the key above Tab). Click the `+` in the terminal panel to open a second one.
+
+### First time only (setting up)
+
+These steps install what the app needs. You only repeat them if the project is freshly downloaded or the package lists change.
+
+Backend, in the first terminal:
+
+```
+cd backend-flask
+python -m venv venv
+pip install -r requirements.txt
+```
+
+Frontend, in the second terminal:
+
+```
+cd frontend-react
+pnpm install
+```
+
+What is happening:
+
+- `cd` means "go into this folder". Commands only work from the right folder.
+- `python -m venv venv` creates the virtual environment: a private copy of Python for this project, so its packages don't clash with other projects.
+- `pip install -r requirements.txt` reads the list in `requirements.txt` and installs every package on it (Flask, requests, and so on) into that private copy. (Activate the environment first, as below, so they go in the right place.)
+- `pnpm install` does the same job for the frontend: it reads `package.json` and downloads React, Vite and the rest into a `node_modules` folder.
+
+### Every time: start the backend (terminal 1)
+
+```
+cd backend-flask
+venv\Scripts\activate
+python app.py
+```
+
+How you activate depends on which kind of terminal you have (the name is shown at the top of the terminal panel):
+
+| Terminal | Activate with |
+| --- | --- |
+| Command Prompt | `venv\Scripts\activate` |
+| PowerShell | `.\venv\Scripts\Activate.ps1` |
+| Git Bash | `source venv/Scripts/activate` |
+
+What is happening:
+
+- **Activating** tells this terminal to use the project's private Python instead of the computer's general one. You'll see `(venv)` appear at the start of the line. It only lasts for that one terminal.
+- `python app.py` starts the Flask server. It's ready when you see `Running on http://127.0.0.1:5001`. It now sits there waiting for requests from the frontend.
+- **Check it works:** open http://localhost:5001/api/health in your browser. You should see `{"status": "ok"}`. That page exists only to answer "is the backend alive?".
+
+### Every time: start the frontend (terminal 2)
+
+```
+cd frontend-react
+pnpm dev
+```
+
+What is happening:
+
+- `pnpm dev` starts Vite, which builds the React app and serves it to your browser. It's ready when you see `Local: http://localhost:5173/`.
+- Open http://localhost:5173 in your browser. That's the app people use.
+- Vite watches your files. Save a change and the page updates by itself, with no restart.
+
+### Why both?
+
+The page you see comes from the frontend (port 5173). The numbers on it come from the backend (port 5001). The frontend asks for numbers and the backend answers. If the backend isn't running, the page loads but the dashboard says it's unavailable, and the frontend terminal fills with `ECONNREFUSED` errors. That error means "I knocked on the backend's door and nobody answered".
+
+### Stopping
+
+- In each terminal, press **Ctrl+C**. This tells that server to stop. The terminal goes back to normal and you can type commands again.
+- Closing the terminal window (the bin icon) also stops whatever was running in it.
+- Stopping one doesn't stop the other. Stop both when you've finished.
+
+### Common problems
+
+| What you see | What it means | Fix |
+| --- | --- | --- |
+| `ECONNREFUSED` in the frontend terminal | The backend isn't running | Start the backend (terminal 1) |
+| `'pnpm' is not recognized` | pnpm isn't installed | Run `npm install -g pnpm`, then reopen the terminal |
+| `ModuleNotFoundError: No module named 'flask'` | The virtual environment isn't active, or packages aren't installed | Activate it, then run `pip install -r requirements.txt` |
+| `Address already in use` / port is busy | An old copy of the server is still running | Find that terminal and press Ctrl+C, or restart VS Code |
+| You changed `app.py` but nothing changed | The backend restarts itself when you save (`debug=True`), but only if it's running | Check terminal 1 is still running and look for errors there |
+
 ## What each folder is for
 
 ```
@@ -75,6 +162,108 @@ There's no password. The person proves they own an email address.
 | **Proxy** | Vite passing `/api` requests on to Flask, so the browser only talks to one address. |
 | **Virtual environment (`venv`)** | A private copy of Python for one project, so packages don't clash. |
 | **Test** | A small piece of code that checks another piece of code works. |
+
+## React idea 1: `useState` (remembering things)
+
+A component is a function that React calls again every time something changes. Normal variables forget their value each time. `useState` remembers.
+
+```tsx
+const [data, setData] = useState<DashboardData | null>(null)
+```
+
+- `data` is the current remembered value. Right now it is `null`, meaning "nothing yet".
+- `setData` is the only correct way to change it.
+- `useState(null)` is the starting value. (The `< >` part is a TypeScript label, see below.)
+
+Why not just write `data = newValue`? React wouldn't notice. Calling `setData(newValue)` stores the value **and** tells React to redraw the page. That is how the dashboard goes from "Loading..." to showing charts.
+
+More examples from `Study.tsx`:
+
+```tsx
+const [revealed, setRevealed] = useState(false)  // is the definition showing?
+const [current, setCurrent] = useState(0)        // which card are we on?
+```
+
+The rule: never change the value directly.
+
+```tsx
+revealed = true        // wrong: nothing redraws
+setRevealed(true)      // right
+```
+
+## React idea 2: `useEffect` (doing something at the right moment)
+
+Some jobs, like fetching data, should not run on every redraw. If they did, each answer would trigger a redraw, which would trigger another fetch, forever. `useEffect` runs a job at chosen moments. From `Dashboard.tsx`:
+
+```tsx
+useEffect(() => {
+  getDashboard().then(setData).catch(() => setFailed(true))
+}, [])
+```
+
+There are two parts: the function (the job), and the list at the end, which says when to run it again.
+
+| You write | It runs |
+| --- | --- |
+| `[]` (empty) | Once, when the page first appears |
+| `[page]` | Once at the start, and again whenever `page` changes |
+| nothing at all | After every redraw (usually causes loops, avoid) |
+
+What happens on our dashboard:
+
+1. The page first draws with no data, so it shows "Loading...".
+2. React runs the effect and the request goes to the backend.
+3. The answer arrives and `setData(...)` stores it.
+4. Changing state makes React redraw, and now the charts appear.
+5. The effect does not run again, because the list is empty.
+
+The two work as a pair: `useState` remembers something, `useEffect` does a job (often ending with a `setSomething`), and that change redraws the page.
+
+## TypeScript labels
+
+Our files end in `.ts` and `.tsx` because they are TypeScript: JavaScript plus labels saying what kind of data things are. The labels only help you and the editor. When the app is built they are removed and plain JavaScript is left, so while reading you can ignore the labels and follow the logic first.
+
+```ts
+const total: number = 5        // a number
+const name: string = 'Niamh'   // text
+const done: boolean = false    // true or false
+byYear: Count[]                // a list of Count things
+activeListings: number | null  // a number, OR nothing (| reads as "or")
+```
+
+Your own shapes use `type` (from `src/lib/types.ts`):
+
+```ts
+export type Count = { label: string; count: number }
+```
+
+This says a `Count` is a thing with a `label` (text) and a `count` (number), like `{ label: 'Radiology', count: 1230 }`.
+
+Labels on a function say what must go in:
+
+```ts
+function StatCard({ label, value }: { label: string; value: string }) { ... }
+```
+
+Forget the `label`, or pass a number where text is expected, and the editor warns you before you run anything.
+
+In `api.ts`:
+
+```ts
+async function request<T>(url: string): Promise<T>
+```
+
+`T` is a placeholder for "whatever shape this call returns", and `Promise<T>` means "an answer that arrives later, shaped like T". So `request<DashboardData>('/api/dashboard')` says "ask for the dashboard; the answer will look like `DashboardData`". Then `as T` means "trust me, the data is this shape". TypeScript cannot check that one, so the backend's key names must match `types.ts`.
+
+## Parsing
+
+The backend's answer arrives as plain text, e.g. `{"status": "ok"}`. **Parsing** turns that text into a real object, so `data.status` gives `"ok"`. In `api.ts`:
+
+```ts
+const body = await response.json().catch(() => ({}))
+```
+
+`response.json()` does the parsing (it takes a moment, so we `await` it). `.catch(() => ({}))` is a safety net: if the reply is not valid JSON, we get an empty object instead of a crash.
 
 ## Things to try (the best way to learn)
 
